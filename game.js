@@ -343,34 +343,73 @@ function startGame() {
 function setupTouchEvents() {
     const gameScreen = document.getElementById('gameScreen');
     
-    // Touch events
-    gameScreen.addEventListener('touchstart', handleTouchStart, { passive: false });
-    gameScreen.addEventListener('touchmove', handleTouchMove, { passive: false });
-    gameScreen.addEventListener('touchend', handleTouchEnd, { passive: false });
-    gameScreen.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+    if (!gameScreen) {
+        console.error('gameScreen element not found!');
+        return;
+    }
+    
+    // Touch events - capture phase to catch all touches
+    gameScreen.addEventListener('touchstart', handleTouchStart, { passive: false, capture: true });
+    gameScreen.addEventListener('touchmove', handleTouchMove, { passive: false, capture: true });
+    gameScreen.addEventListener('touchend', handleTouchEnd, { passive: false, capture: true });
+    gameScreen.addEventListener('touchcancel', handleTouchEnd, { passive: false, capture: true });
     
     // Mouse events for desktop testing
-    gameScreen.addEventListener('mousedown', handleMouseDown);
-    gameScreen.addEventListener('mousemove', handleMouseMove);
-    gameScreen.addEventListener('mouseup', handleMouseUp);
+    gameScreen.addEventListener('mousedown', handleMouseDown, { capture: true });
+    gameScreen.addEventListener('mousemove', handleMouseMove, { capture: true });
+    gameScreen.addEventListener('mouseup', handleMouseUp, { capture: true });
+    
+    console.log('Touch events set up successfully');
 }
 
 function handleTouchStart(e) {
+    // Don't prevent default if touching the question container or buttons
+    const target = e.target;
+    if (target.closest('.question-container') || target.closest('button') || target.tagName === 'BUTTON') {
+        return;
+    }
+    
     e.preventDefault();
+    e.stopPropagation();
+    
+    console.log('Touch start detected', e.changedTouches.length);
+    
     for (let touch of e.changedTouches) {
-        createMarker(touch.identifier, touch.clientX, touch.clientY);
+        // Use pageX/pageY for mobile compatibility (accounts for scroll)
+        const x = touch.pageX || touch.clientX;
+        const y = touch.pageY || touch.clientY;
+        createMarker(touch.identifier, x, y);
     }
 }
 
 function handleTouchMove(e) {
+    // Don't prevent default if touching the question container or buttons
+    const target = e.target;
+    if (target.closest('.question-container') || target.closest('button') || target.tagName === 'BUTTON') {
+        return;
+    }
+    
     e.preventDefault();
+    e.stopPropagation();
+    
     for (let touch of e.changedTouches) {
-        updateMarker(touch.identifier, touch.clientX, touch.clientY);
+        // Use pageX/pageY for mobile compatibility
+        const x = touch.pageX || touch.clientX;
+        const y = touch.pageY || touch.clientY;
+        updateMarker(touch.identifier, x, y);
     }
 }
 
 function handleTouchEnd(e) {
+    // Don't prevent default if touching the question container or buttons
+    const target = e.target;
+    if (target.closest('.question-container') || target.closest('button') || target.tagName === 'BUTTON') {
+        return;
+    }
+    
     e.preventDefault();
+    e.stopPropagation();
+    
     for (let touch of e.changedTouches) {
         removeMarker(touch.identifier);
     }
@@ -399,6 +438,12 @@ function handleMouseUp(e) {
 }
 
 function createMarker(identifier, x, y) {
+    const gameScreen = document.getElementById('gameScreen');
+    if (!gameScreen) {
+        console.error('gameScreen not found when creating marker');
+        return;
+    }
+    
     // Assign player number if not already assigned
     let playerNum;
     if (playerAssignments.has(identifier)) {
@@ -425,16 +470,32 @@ function createMarker(identifier, x, y) {
     // Update current player turn
     currentPlayerTurn = playerNum;
     
+    // Ensure coordinates are valid numbers
+    if (isNaN(x) || isNaN(y)) {
+        console.error('Invalid coordinates:', x, y);
+        return;
+    }
+    
+    // Ensure marker stays within viewport bounds
+    const left = Math.max(0, Math.min(window.innerWidth - 60, x - 30));
+    const top = Math.max(0, Math.min(window.innerHeight - 60, y - 30));
+    
     const marker = document.createElement('div');
     marker.className = 'touch-marker';
     marker.id = 'marker-' + identifier;
     marker.dataset.playerNum = playerNum;
-    marker.style.left = (x - 30) + 'px';
-    marker.style.top = (y - 30) + 'px';
+    marker.style.position = 'fixed';
+    marker.style.left = left + 'px';
+    marker.style.top = top + 'px';
     marker.style.width = '60px';
     marker.style.height = '60px';
     marker.style.background = `radial-gradient(circle, ${color} 0%, ${color}dd 100%)`;
     marker.style.border = `3px solid ${color}`;
+    marker.style.pointerEvents = 'none';
+    marker.style.touchAction = 'none';
+    marker.style.webkitTouchCallout = 'none';
+    marker.style.webkitUserSelect = 'none';
+    marker.style.userSelect = 'none';
     
     // Add player number label
     const label = document.createElement('div');
@@ -447,10 +508,14 @@ function createMarker(identifier, x, y) {
     label.style.fontWeight = 'bold';
     label.style.fontSize = '24px';
     label.style.textShadow = '0 2px 4px rgba(0,0,0,0.5)';
+    label.style.pointerEvents = 'none';
     marker.appendChild(label);
     
-    document.getElementById('gameScreen').appendChild(marker);
+    // Append to body for better mobile compatibility
+    document.body.appendChild(marker);
     activeTouches.set(identifier, { x, y, marker, playerNum });
+    
+    console.log(`Marker created for player ${playerNum} at (${x}, ${y}), positioned at (${left}, ${top})`);
     
     // Update question display to show current player
     updateQuestionForPlayer();
@@ -459,8 +524,11 @@ function createMarker(identifier, x, y) {
 function updateMarker(identifier, x, y) {
     const touch = activeTouches.get(identifier);
     if (touch && touch.marker) {
-        touch.marker.style.left = (x - 30) + 'px';
-        touch.marker.style.top = (y - 30) + 'px';
+        // Ensure coordinates are valid numbers
+        const left = Math.max(0, Math.min(window.innerWidth, x - 30));
+        const top = Math.max(0, Math.min(window.innerHeight, y - 30));
+        touch.marker.style.left = left + 'px';
+        touch.marker.style.top = top + 'px';
         touch.x = x;
         touch.y = y;
     }
@@ -546,17 +614,29 @@ function nextQuestion() {
     }, 10);
 }
 
-// Prevent default touch behaviors
+// Prevent default touch behaviors globally (but allow buttons and question container)
 document.addEventListener('touchstart', function(e) {
-    if (e.target.closest('.question-container') || e.target.closest('.player-selection')) {
+    const target = e.target;
+    if (target.closest('.question-container') || 
+        target.closest('.player-selection') || 
+        target.closest('button') || 
+        target.tagName === 'BUTTON') {
         return;
     }
-}, { passive: false });
+    // Allow default for interactive elements
+}, { passive: true });
 
 document.addEventListener('touchmove', function(e) {
-    if (e.target.closest('.question-container') || e.target.closest('.player-selection')) {
+    const target = e.target;
+    if (target.closest('.question-container') || 
+        target.closest('.player-selection') || 
+        target.closest('button') || 
+        target.tagName === 'BUTTON') {
         return;
     }
-    e.preventDefault();
+    // Prevent scrolling on game screen
+    if (document.getElementById('gameScreen') && document.getElementById('gameScreen').classList.contains('active')) {
+        e.preventDefault();
+    }
 }, { passive: false });
 
